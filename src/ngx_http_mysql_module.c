@@ -250,6 +250,7 @@ char* ngx_http_mysql_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
 	ngx_http_mysql_srv_conf_t *prev = parent;
 	ngx_http_mysql_srv_conf_t *conf = child;
+	ngx_pool_cleanup_t *cp;
 	ngx_int_t n;
 
 	ngx_log_debug0(NGX_LOG_INFO, cf->log, 0, "mysql merge srv");
@@ -279,6 +280,13 @@ char* ngx_http_mysql_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 
 		for(n = 0; n < conf->max_conn - 1; ++n)
 			conf->nodes[n].next = conf->nodes + n + 1;
+
+		cp = ngx_pool_cleanup_add(cf->pool, 0);
+		if (cp == NULL) {
+			return NGX_CONF_ERROR;
+		}
+		cp->handler = ngx_http_mysql_cleanup;
+		cp->data    = conf->nodes;
 
 	} else if (prev->max_conn != NGX_CONF_UNSET) {
 
@@ -524,6 +532,17 @@ char* ngx_http_mysql_escape(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	v->data = (uintptr_t)index;
 
 	return NGX_CONF_OK;
+}
+
+void ngx_http_mysql_cleanup(void *data)
+{
+	ngx_http_mysql_node_t *p, *nodes;
+ 	nodes = (ngx_http_mysql_node_t *)data;
+	for (p = nodes; p; p = p->next) {
+		if (p->ready) {
+			mysql_close(&p->mysql);
+		}
+	}
 }
 
 ngx_int_t ngx_http_mysql_init(ngx_conf_t *cf) 
